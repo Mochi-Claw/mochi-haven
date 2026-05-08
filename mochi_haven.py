@@ -999,6 +999,32 @@ class MochiHavenGame:
         # ========================================
         self.player.move(dx, dy, self.current_scene.walls)
 
+        # Scene boundary transitions — walk off-screen to change area
+        player_center = self.player.rect.center
+        if self.current_scene.name == 'home':
+            if player_center[0] > SCREEN_WIDTH + 16:
+                self.current_scene = self.scenes['garden']
+                self.player.rect.x = -32
+        elif self.current_scene.name == 'garden':
+            if player_center[0] < -16:
+                self.current_scene = self.scenes['home']
+                self.player.rect.x = SCREEN_WIDTH
+            elif player_center[0] > SCREEN_WIDTH + 16:
+                self.current_scene = self.scenes['forest']
+                self.player.rect.x = -32
+        elif self.current_scene.name == 'forest':
+            if player_center[0] < -16:
+                self.current_scene = self.scenes['garden']
+                self.player.rect.x = SCREEN_WIDTH
+            elif player_center[0] > SCREEN_WIDTH + 16:
+                self.current_scene = self.scenes['town']
+                self.player.rect.x = -32
+        elif self.current_scene.name == 'town':
+            if player_center[0] < -16:
+                self.current_scene = self.scenes['forest']
+                self.player.rect.x = SCREEN_WIDTH
+
+
         # Update nearby interactables
         nearby_npcs = self.current_scene.get_nearby_npcs(self.player.rect)
         nearby_objects = self.current_scene.get_nearby_objects(self.player.rect)
@@ -1070,6 +1096,109 @@ class MochiHavenGame:
             item_surf = font.render(item_text, True, COLORS['BLACK'])
             self.screen.blit(item_surf, (inv_rect.x + 20, inv_rect.y + y_off))
             y_off += 25
+
+    def draw_stats_overlay(self):
+        """Draw stats overlay in top-right corner"""
+        overlay_rect = pygame.Rect(SCREEN_WIDTH - 210, 10, 200, 150)
+        pygame.draw.rect(self.screen, COLORS['CREAM'], overlay_rect, border_radius=10)
+        pygame.draw.rect(self.screen, COLORS['PINK'], overlay_rect, 3, border_radius=10)
+
+        font = pygame.font.Font(None, 24)
+        title = font.render("Stats", True, COLORS['PINK'])
+        self.screen.blit(title, (overlay_rect.x + 10, overlay_rect.y + 10))
+
+        y_off = 40
+        for stat, value in self.state.stats.items():
+            stat_text = f"{stat}: {value}"
+            stat_surf = font.render(stat_text, True, COLORS['BLACK'])
+            self.screen.blit(stat_surf, (overlay_rect.x + 20, overlay_rect.y + y_off))
+            y_off += 25
+
+        # Health bar
+        health_ratio = self.state.health / self.state.stats['VIT']
+        bar_y = overlay_rect.y + y_off + 10
+        pygame.draw.rect(self.screen, (100, 100, 100), (overlay_rect.x + 20, bar_y, 160, 15))
+        pygame.draw.rect(self.screen, (255, 50, 50), (overlay_rect.x + 20, bar_y, int(160 * health_ratio), 15))
+        health_label = font.render("HP", True, COLORS['WHITE'])
+        self.screen.blit(health_label, (overlay_rect.x + 20, bar_y))
+
+        # XP bar
+        xp_ratio = self.state.stats['XP'] / self.state.stats['XP_TO_NEXT']
+        bar_y2 = bar_y + 25
+        pygame.draw.rect(self.screen, (100, 100, 100), (overlay_rect.x + 20, bar_y2, 160, 15))
+        pygame.draw.rect(self.screen, (100, 200, 255), (overlay_rect.x + 20, bar_y2, int(160 * xp_ratio), 15))
+        xp_label = font.render("XP", True, COLORS['WHITE'])
+        self.screen.blit(xp_label, (overlay_rect.x + 20, bar_y2))
+
+    def draw_crafting_menu(self):
+        """Draw crafting recipe menu"""
+        menu_rect = pygame.Rect(SCREEN_WIDTH//2 - 120, SCREEN_HEIGHT//2 - 120, 240, 240)
+        pygame.draw.rect(self.screen, COLORS['CREAM'], menu_rect, border_radius=10)
+        pygame.draw.rect(self.screen, COLORS['PINK'], menu_rect, 3, border_radius=10)
+
+        font = pygame.font.Font(None, 24)
+        title = font.render("Crafting", True, COLORS['PINK'])
+        self.screen.blit(title, (menu_rect.x + 10, menu_rect.y + 10))
+
+        y_off = 40
+        for i, recipe in enumerate(CRAFTING_RECIPES):
+            color = COLORS['SKY'] if i == self.state.selected_recipe else COLORS['BLACK']
+            can_craft = all(self.state.inventory.get(ing, 0) >= qty for ing, qty in recipe['ingredients'].items())
+            status = "✓" if can_craft else "✗"
+            recipe_text = f"[{status}] {recipe['name']}"
+            recipe_surf = font.render(recipe_text, True, color)
+            self.screen.blit(recipe_surf, (menu_rect.x + 20, menu_rect.y + y_off))
+            ing_text = ", ".join(f"{k}:{v}" for k, v in recipe['ingredients'].items())
+            ing_surf = font.render(ing_text, True, COLORS['GRAY'])
+            self.screen.blit(ing_surf, (menu_rect.x + 20, menu_rect.y + y_off + 20))
+            y_off += 60
+
+        inst = font.render("ENTER: craft  ↑/↓: select", True, COLORS['GRAY'])
+        self.screen.blit(inst, (menu_rect.x + 10, menu_rect.bottom - 30))
+
+    def draw_quest_log(self):
+        """Draw quest log overlay"""
+        log_rect = pygame.Rect(SCREEN_WIDTH//2 - 120, SCREEN_HEIGHT//2 - 120, 240, 240)
+        pygame.draw.rect(self.screen, COLORS['CREAM'], log_rect, border_radius=10)
+        pygame.draw.rect(self.screen, COLORS['PINK'], log_rect, 3, border_radius=10)
+
+        font = pygame.font.Font(None, 24)
+        title = font.render("Quests", True, COLORS['PINK'])
+        self.screen.blit(title, (log_rect.x + 10, log_rect.y + 10))
+
+        y_off = 40
+        for idx in self.state.active_quest_indices:
+            quest = self.state.quests[idx]
+            title_surf = font.render(quest['title'], True, COLORS['BLACK'])
+            self.screen.blit(title_surf, (log_rect.x + 20, log_rect.y + y_off))
+            bar_width = 200
+            bar_height = 12
+            bar_x = log_rect.x + 20
+            bar_y = log_rect.y + y_off + 25
+            ratio = quest['current_count'] / quest['target_count']
+            pygame.draw.rect(self.screen, (100, 100, 100), (bar_x, bar_y, bar_width, bar_height), border_radius=6)
+            pygame.draw.rect(self.screen, (100, 200, 100), (bar_x, bar_y, int(bar_width * ratio), bar_height), border_radius=6)
+            prog_text = f"{quest['current_count']}/{quest['target_count']}"
+            prog_surf = font.render(prog_text, True, COLORS['BLACK'])
+            self.screen.blit(prog_surf, (bar_x + bar_width + 10, bar_y))
+            y_off += 70
+
+    def draw_gathering_progress(self):
+        """Draw gathering progress bar when holding X near resource node"""
+        if not self.state.gather_target:
+            return
+        bar_width = 300
+        bar_height = 30
+        bar_x = (SCREEN_WIDTH - bar_width) // 2
+        bar_y = SCREEN_HEIGHT - 80
+        pygame.draw.rect(self.screen, (50, 50, 50), (bar_x, bar_y, bar_width, bar_height), border_radius=15)
+        ratio = self.state.gather_progress / self.state.gather_duration
+        pygame.draw.rect(self.screen, (100, 200, 100), (bar_x, bar_y, int(bar_width * ratio), bar_height), border_radius=15)
+        pygame.draw.rect(self.screen, COLORS['WHITE'], (bar_x, bar_y, bar_width, bar_height), 3, border_radius=15)
+        font = pygame.font.Font(None, 22)
+        label = font.render("Gathering...", True, COLORS['WHITE'])
+        self.screen.blit(label, (bar_x + bar_width//2 - label.get_width()//2, bar_y + 2))
+
 
     def run(self):
         print("🎮 Starting Joy Time")
