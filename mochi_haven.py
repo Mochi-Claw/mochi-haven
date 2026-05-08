@@ -368,20 +368,37 @@ class MochiHavenGame:
         self.bed = bed
 
     def load_game(self):
-        save_path = '/root/.openclaw/workspace/mochi_haven_save.json'
+        # Use platform-appropriate save directory
+        if sys.platform == 'win32':
+            save_dir = os.path.join(os.path.expanduser('~'), '.mochi_haven')
+        else:
+            save_dir = '/root/.openclaw/workspace'  # Linux default
+        
+        save_path = os.path.join(save_dir, 'savegame.json')
+        
         if os.path.exists(save_path):
             try:
                 with open(save_path, 'r') as f:
                     data = json.load(f)
                 self.state.load_from_dict(data)
-            except:
-                print("Save file corrupted, starting fresh")
+            except Exception as e:
+                print(f"Save file corrupted, starting fresh: {e}")
 
     def save_game(self):
-        save_path = '/root/.openclaw/workspace/mochi_haven_save.json'
+        # Use platform-appropriate save directory
+        if sys.platform == 'win32':
+            save_dir = os.path.join(os.path.expanduser('~'), '.mochi_haven')
+        else:
+            save_dir = '/root/.openclaw/workspace'
+        
+        # Ensure directory exists
+        os.makedirs(save_dir, exist_ok=True)
+        save_path = os.path.join(save_dir, 'savegame.json')
+        
         data = self.state.get_save_dict()
         with open(save_path, 'w') as f:
             json.dump(data, f, indent=2)
+        print(f"💾 Game saved to {save_path}")
 
     def handle_input(self):
         keys = pygame.key.get_pressed()
