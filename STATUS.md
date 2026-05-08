@@ -70,10 +70,13 @@
 | Bug | Severity | Status |
 |-----|----------|--------|
 | ASCII art warning (fixed) | ⚠️ LOW | ✅ Fixed in commit 0f064ff |
-| Joystick axis deadzone | ⚠️ LOW | Works but analog sensitivity |
-| Dialog skips all text | ⚠️ MED | Need better flow control |
-| No error dialogs | ⚠️ LOW | Exceptions crash game |
-| Save file location hardcoded | ⚠️ LOW | Should use platformdirs |
+| `pygame.draw.drawCircle` typo | ⚠️ CRITICAL | ✅ Fixed in commit 4c771c0 |
+| Player attributes missing | ⚠️ CRITICAL | ✅ Fixed in commit 81ce6ef |
+| Interactable objects crash | ⚠️ CRITICAL | ✅ Fixed in commit e2c190a |
+| Save path hardcoded to /root | ⚠️ MEDIUM | ✅ Fixed in commit 44c4ec8 |
+| Joystick axis deadzone | ⚠️ LOW | ⏳ TODO |
+| Dialog skips all text | ⚠️ MED | ⏳ TODO |
+| No error dialogs | ⚠️ LOW | ⏳ TODO |
 
 ---
 
