@@ -1,0 +1,10 @@
+import mochi_haven
+
+if __name__ == "__main__":
+    try:
+        game = mochi_haven.MochiHavenGame()
+        game.run()
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        print(f"An error occurred: {e}")
