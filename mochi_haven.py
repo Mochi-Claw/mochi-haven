@@ -1002,25 +1002,25 @@ class MochiHavenGame:
         # Scene boundary transitions — walk off-screen to change area
         player_center = self.player.rect.center
         if self.current_scene.name == 'home':
-            if player_center[0] > SCREEN_WIDTH + 16:
+            if player_center[0] >= SCREEN_WIDTH - 16:
                 self.current_scene = self.scenes['garden']
                 self.player.rect.x = -32
         elif self.current_scene.name == 'garden':
-            if player_center[0] < -16:
+            if player_center[0] <= 16:
                 self.current_scene = self.scenes['home']
                 self.player.rect.x = SCREEN_WIDTH
-            elif player_center[0] > SCREEN_WIDTH + 16:
+            elif player_center[0] >= SCREEN_WIDTH - 16:
                 self.current_scene = self.scenes['forest']
                 self.player.rect.x = -32
         elif self.current_scene.name == 'forest':
-            if player_center[0] < -16:
+            if player_center[0] <= 16:
                 self.current_scene = self.scenes['garden']
                 self.player.rect.x = SCREEN_WIDTH
-            elif player_center[0] > SCREEN_WIDTH + 16:
+            elif player_center[0] >= SCREEN_WIDTH - 16:
                 self.current_scene = self.scenes['town']
                 self.player.rect.x = -32
         elif self.current_scene.name == 'town':
-            if player_center[0] < -16:
+            if player_center[0] <= 16:
                 self.current_scene = self.scenes['forest']
                 self.player.rect.x = SCREEN_WIDTH
 
