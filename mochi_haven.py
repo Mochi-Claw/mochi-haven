@@ -108,6 +108,9 @@ class Player:
         self.speed = 3
         self.moving = False
         self.direction = 'down'  # up, down, left, right
+        self.animation_timer = 0
+        self.nearby_npc = None
+        self.nearby_object = None
 
         # Simple pixel art! (we'll expand later)
         self.sprite = pygame.Surface((32, 32), pygame.SRCALPHA)
