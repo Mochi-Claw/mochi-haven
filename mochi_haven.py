@@ -178,7 +178,7 @@ class NPC:
         pygame.draw.circle(self.sprite, COLORS['CREAM'], (16, 10), 8)
         # Eyes
         pygame.draw.circle(self.sprite, COLORS['BLACK'], (12, 9), 2)
-        pygame.draw.drawCircle(self.sprite, COLORS['BLACK'], (20, 9), 2)
+        pygame.draw.circle(self.sprite, COLORS['BLACK'], (20, 9), 2)
 
     def draw(self, surface):
         surface.blit(self.sprite, self.rect)
