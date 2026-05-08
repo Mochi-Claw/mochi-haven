@@ -196,6 +196,24 @@ class NPC:
         return line
 
 # ========================================
+# INTERACTABLE OBJECTS (beds, chests, etc.)
+# ========================================
+class Interactable:
+    def __init__(self, x, y, width, height, color, action="Interact", interact_msg="You interacted with something!"):
+        self.rect = pygame.Rect(x, y, width, height)
+        self.color = color
+        self.action = action
+        self.interact_msg = interact_msg
+
+    def draw(self, surface):
+        # Draw a simple colored rectangle with border
+        pygame.draw.rect(surface, self.color, self.rect, border_radius=8)
+        pygame.draw.rect(surface, COLORS['WHITE'], self.rect, 2, border_radius=8)
+
+    def interact(self):
+        return self.interact_msg
+
+# ========================================
 # SCENE MANAGER
 # ========================================
 class Scene:
@@ -226,6 +244,13 @@ class Scene:
             dist = pygame.math.Vector2(npc.rect.center) - pygame.math.Vector2(player_rect.center)
             if dist.length() < 50:
                 nearby.append(npc)
+        return nearby
+
+    def get_nearby_objects(self, player_rect):
+        nearby = []
+        for obj in self.objects:
+            if player_rect.colliderect(obj.rect):
+                nearby.append(obj)
         return nearby
 
 # ========================================
@@ -337,8 +362,10 @@ class MochiHavenGame:
 
         # Add interactable objects
         # Bed (for saving/resting)
-        self.bed_rect = pygame.Rect(300, 300, 60, 40)
-        self.current_scene.objects.append(self.bed_rect)
+        bed = Interactable(300, 300, 60, 40, COLORS['PEACH'], "Sleep", "You slept peacefully! 💤")
+        self.scenes['home'].objects.append(bed)
+        # Store reference for bed interaction
+        self.bed = bed
 
     def load_game(self):
         save_path = '/root/.openclaw/workspace/mochi_haven_save.json'
@@ -401,7 +428,17 @@ class MochiHavenGame:
 
         # Check for nearby interactables
         nearby_npcs = self.current_scene.get_nearby_npcs(self.player.rect)
-        self.player.nearby_npc = nearby_npcs[0] if nearby_npcs else None
+        nearby_objects = self.current_scene.get_nearby_objects(self.player.rect)
+        
+        if nearby_npcs:
+            self.player.nearby_npc = nearby_npcs[0]
+        else:
+            self.player.nearby_npc = None
+            
+        if nearby_objects:
+            self.player.nearby_object = nearby_objects[0]
+        else:
+            self.player.nearby_object = None
 
         # Event handling
         for event in pygame.event.get():
@@ -420,11 +457,19 @@ class MochiHavenGame:
                         if self.dialog.displayed_chars >= len(self.dialog.text):
                             self.dialog.visible = False
                     else:
-                        # Start interaction
+                        # Start interaction - NPC priority, then objects
                         if self.player.nearby_npc:
                             npc = self.player.nearby_npc
                             line = npc.interact()
                             self.dialog.show(line)
+                        elif self.player.nearby_object:
+                            obj = self.player.nearby_object
+                            line = obj.interact()
+                            self.dialog.show(line)
+                            # Special: bed saves game!
+                            if obj.action == "Sleep":
+                                self.save_game()
+                                self.dialog.show("Game saved! Sweet dreams... 💤")
 
             elif event.type == pygame.JOYBUTTONDOWN:
                 # RG35xx button mapping!
@@ -433,10 +478,19 @@ class MochiHavenGame:
                         if self.dialog.displayed_chars >= len(self.dialog.text):
                             self.dialog.visible = False
                     else:
+                        # Start interaction - NPC priority, then objects
                         if self.player.nearby_npc:
                             npc = self.player.nearby_npc
                             line = npc.interact()
                             self.dialog.show(line)
+                        elif self.player.nearby_object:
+                            obj = self.player.nearby_object
+                            line = obj.interact()
+                            self.dialog.show(line)
+                            # Special: bed saves game!
+                            if obj.action == "Sleep":
+                                self.save_game()
+                                self.dialog.show("Game saved! Sweet dreams... 💤")
 
                 elif event.button == BUTTON_B:  # Cancel/Back
                     if self.dialog.visible:
