@@ -825,8 +825,10 @@ class MochiHavenGame:
                         else:
                             self.inventory_open = not self.inventory_open
                 elif event.key == pygame.K_y:
+                    print(f"[DEBUG] Before Y: crafting={self.state.crafting_menu_open}")
                     if not self.dialog.visible:
                         self.state.crafting_menu_open = not self.state.crafting_menu_open
+                        print(f"[DEBUG] After Y toggle: crafting={self.state.crafting_menu_open}")
                         if self.state.crafting_menu_open:
                             self.state.quest_log_open = False
                             self.state.stats_overlay_open = False
@@ -1009,28 +1011,38 @@ class MochiHavenGame:
 
         # Scene boundary transitions — walk off-screen to change area
         player_center = self.player.rect.center
+        # DEBUG
+        if self.current_scene.name == 'home' and player_center[0] >= SCREEN_WIDTH - 16:
+            print(f"[TRANSITION] Home->Garden! player_center.x={player_center[0]}, threshold={SCREEN_WIDTH-16}")
         if self.current_scene.name == 'home':
             if player_center[0] >= SCREEN_WIDTH - 16:
                 self.current_scene = self.scenes['garden']
                 self.player.rect.x = -32
+                print("[TRANSITION] Entered garden")
         elif self.current_scene.name == 'garden':
             if player_center[0] <= 16:
                 self.current_scene = self.scenes['home']
                 self.player.rect.x = SCREEN_WIDTH
+                print("[TRANSITION] Entered home")
             elif player_center[0] >= SCREEN_WIDTH - 16:
                 self.current_scene = self.scenes['forest']
                 self.player.rect.x = -32
+                print("[TRANSITION] Entered forest")
         elif self.current_scene.name == 'forest':
             if player_center[0] <= 16:
                 self.current_scene = self.scenes['garden']
                 self.player.rect.x = SCREEN_WIDTH
+                print("[TRANSITION] Entered garden")
             elif player_center[0] >= SCREEN_WIDTH - 16:
                 self.current_scene = self.scenes['town']
                 self.player.rect.x = -32
+                print("[TRANSITION] Entered town")
         elif self.current_scene.name == 'town':
             if player_center[0] <= 16:
                 self.current_scene = self.scenes['forest']
                 self.player.rect.x = SCREEN_WIDTH
+                print("[TRANSITION] Entered forest")
+        # END DEBUG
 
 
         # Update nearby interactables
@@ -1071,6 +1083,7 @@ class MochiHavenGame:
         self.current_scene.update(dt)
 
     def draw(self):
+        print(f"[DEBUG] draw() called: crafting={self.state.crafting_menu_open}, quest={self.state.quest_log_open}, stats={self.state.stats_overlay_open}")
         # Draw current scene
         self.current_scene.draw(self.screen, self.player)
 
@@ -1139,6 +1152,7 @@ class MochiHavenGame:
         self.screen.blit(xp_label, (overlay_rect.x + 20, bar_y2))
 
     def draw_crafting_menu(self):
+        print("[DEBUG] draw_crafting_menu called, crafting_menu_open=", self.state.crafting_menu_open)
         """Draw crafting recipe menu"""
         menu_rect = pygame.Rect(SCREEN_WIDTH//2 - 120, SCREEN_HEIGHT//2 - 120, 240, 240)
         pygame.draw.rect(self.screen, COLORS['CREAM'], menu_rect, border_radius=10)
