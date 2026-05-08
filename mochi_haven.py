@@ -6,6 +6,7 @@ import pygame
 import sys
 import os
 import json
+import random
 from datetime import datetime
 
 # Initialize Pygame
@@ -46,7 +47,7 @@ BUTTON_START = 9
 # D-Pad will map to HAT 0 (up/down/left/right)
 
 # ========================================
-# GAME STATE
+# GAME STATE (extended)
 # ========================================
 class GameState:
     def __init__(self):
@@ -61,11 +62,13 @@ class GameState:
             'LEVEL': 1,
             'XP': 0,
             'XP_TO_NEXT': 100,
-            'VIT': 10,   # Health/Energy
+            'VIT': 10,   # Max Health/Energy
             'INT': 5,    # Crafting quality
             'STR': 5,    # Gathering speed
             'CHA': 5,    # Friendship boosts
         }
+        # Current health (starts at max VIT)
+        self.health = self.stats['VIT']
 
         # Inventory
         self.inventory = {
@@ -75,6 +78,13 @@ class GameState:
             'coffee': 2,
             'fish': 0,
             'wood': 0,
+            'ore': 0,
+            'string': 0,
+            'water': 0,
+            'catnip_tea': 0,
+            'yarn_ball': 0,
+            'fishing_rod': 0,
+            'amulet': 0,
         }
 
         # Time
@@ -85,19 +95,224 @@ class GameState:
         self.talking_to_npc = None
         self.menu_open = False
 
+        # Quest Log (Phase 2)
+        self.quests = []
+        self.active_quest_indices = []  # indices into self.quests
+        self.completed_quests = []
+
+        # Active temporary buffs (list of (stat, value, expiry_ms))
+        self.active_buffs = []
+
+        # Crafting & Gathering state
+        self.gathering = False
+        self.gather_progress = 0
+        self.gather_target = None  # ResourceNode object
+        self.gather_duration = 2000  # ms
+        self.crafting_menu_open = False
+        self.selected_recipe = 0
+
+        # UI overlays
+        self.stats_overlay_open = False
+        self.quest_log_open = False
+
+        # Initialize starting quests
+        self.initialize_quests()
+
+    def initialize_quests(self):
+        # Starting quests: Gather 5 Wood, Catch 3 Fish, Talk to Tiri
+        self.quests = [
+            {
+                'id': 'gather_wood_5',
+                'title': 'Gather 5 Wood',
+                'description': 'Collect 5 pieces of wood from the forest.',
+                'objective_type': 'gather',
+                'target_item': 'wood',
+                'target_count': 5,
+                'current_count': 0,
+                'reward_xp': 50,
+                'reward_item': None,
+                'active': True,
+            },
+            {
+                'id': 'catch_fish_3',
+                'title': 'Catch 3 Fish',
+                'description': 'Catch 3 fish from the garden pond or forest river.',
+                'objective_type': 'gather',
+                'target_item': 'fish',
+                'target_count': 3,
+                'current_count': 0,
+                'reward_xp': 75,
+                'reward_item': None,
+                'active': True,
+            },
+            {
+                'id': 'talk_tiri',
+                'title': 'Talk to Tiri',
+                'description': 'Have a conversation with Tiri.',
+                'objective_type': 'talk',
+                'target_npc': 'Tiri',
+                'target_count': 1,
+                'current_count': 0,
+                'reward_xp': 25,
+                'reward_item': None,
+                'active': True,
+            },
+        ]
+        self.active_quest_indices = [0, 1, 2]
+
+    def calculate_xp_to_next(self):
+        level = self.stats['LEVEL']
+        return int(100 * (level ** 1.5))
+
+    def gain_xp(self, amount):
+        """Add XP and process any level-ups. Returns number of levels gained."""
+        self.stats['XP'] += amount
+        levels = 0
+        while self.stats['XP'] >= self.stats['XP_TO_NEXT']:
+            # Level up once
+            increased_stat = self.level_up()
+            levels += 1
+        return levels
+
+    def level_up(self):
+        """Perform a single level up, auto-assign to smallest stat. Returns the stat increased."""
+        self.stats['LEVEL'] += 1
+        self.stats['XP'] -= self.stats['XP_TO_NEXT']
+        self.stats['XP_TO_NEXT'] = self.calculate_xp_to_next()
+        # Auto-assign smallest stat
+        min_stat = min(['VIT', 'INT', 'STR', 'CHA'], key=lambda s: self.stats[s])
+        self.stats[min_stat] += 1
+        return min_stat
+
+    def dialog_show(self, text):
+        # No-op; dialogs handled by main game
+        pass
+
+    def update_quest_progress(self, objective_type, target, amount=1):
+        for i, quest_idx in enumerate(self.active_quest_indices[:]):
+            quest = self.quests[quest_idx]
+            if quest['objective_type'] == objective_type:
+                if objective_type == 'gather' and quest.get('target_item') == target:
+                    quest['current_count'] += amount
+                elif objective_type == 'talk' and quest.get('target_npc') == target:
+                    quest['current_count'] += amount
+                # Check completion
+                if quest['current_count'] >= quest['target_count']:
+                    self.complete_quest(quest_idx)
+
+    def complete_quest(self, quest_idx):
+        quest = self.quests[quest_idx]
+        # Grant rewards
+        self.gain_xp(quest['reward_xp'])
+        if quest['reward_item']:
+            self.inventory[quest['reward_item']] = self.inventory.get(quest['reward_item'], 0) + 1
+        # Remove from active
+        if quest_idx in self.active_quest_indices:
+            self.active_quest_indices.remove(quest_idx)
+        self.completed_quests.append(quest)
+        # Add a new random quest
+        self.add_random_quest()
+        self.dialog_show(f"Quest Complete! {quest['title']} — +{quest['reward_xp']} XP!")
+
+    def update_quest_progress(self, objective_type, target, amount=1):
+        newly_completed = []
+        for i, quest_idx in enumerate(self.active_quest_indices[:]):
+            quest = self.quests[quest_idx]
+            if quest['objective_type'] == objective_type:
+                if objective_type == 'gather' and quest.get('target_item') == target:
+                    quest['current_count'] += amount
+                elif objective_type == 'talk' and quest.get('target_npc') == target:
+                    quest['current_count'] += amount
+                # Check completion
+                if quest['current_count'] >= quest['target_count']:
+                    newly_completed.append(quest_idx)
+        return newly_completed
+
+    def complete_quest(self, quest_idx):
+        quest = self.quests[quest_idx]
+        levels = self.gain_xp(quest['reward_xp'])
+        rewards = {
+            'xp': quest['reward_xp'],
+            'levels': levels,
+            'item': quest['reward_item'],
+        }
+        # Grant item
+        if quest['reward_item']:
+            self.inventory[quest['reward_item']] = self.inventory.get(quest['reward_item'], 0) + 1
+        # Remove from active
+        if quest_idx in self.active_quest_indices:
+            self.active_quest_indices.remove(quest_idx)
+        self.completed_quests.append(quest)
+        # Add a new random quest
+        self.add_random_quest()
+        return rewards
+
+    def add_random_quest(self):
+        # Simple pool of possible quests
+        pool = [
+            {
+                'id': 'gather_strawberries_5',
+                'title': 'Gather 5 Strawberries',
+                'description': 'Collect 5 strawberries from the garden.',
+                'objective_type': 'gather',
+                'target_item': 'strawberries',
+                'target_count': 5,
+                'current_count': 0,
+                'reward_xp': 40,
+                'reward_item': None,
+            },
+            {
+                'id': 'gather_catnip_10',
+                'title': 'Gather 10 Catnip',
+                'description': 'Harvest 10 catnip from the garden.',
+                'objective_type': 'gather',
+                'target_item': 'catnip',
+                'target_count': 10,
+                'current_count': 0,
+                'reward_xp': 30,
+                'reward_item': None,
+            },
+            {
+                'id': 'talk_watson',
+                'title': 'Talk to Watson',
+                'description': 'Chat with Watson in the house.',
+                'objective_type': 'talk',
+                'target_npc': 'Watson',
+                'target_count': 1,
+                'current_count': 0,
+                'reward_xp': 25,
+                'reward_item': None,
+            },
+        ]
+        new_quest = random.choice(pool)
+        new_quest['active'] = True
+        new_quest_idx = len(self.quests)
+        self.quests.append(new_quest)
+        self.active_quest_indices.append(new_quest_idx)
+
     def get_save_dict(self):
         return {
             'stats': self.stats,
+            'health': self.health,
             'inventory': self.inventory,
             'game_time': self.game_time,
             'day': self.day,
+            'quests': self.quests,
+            'active_quest_indices': self.active_quest_indices,
+            'completed_quests': self.completed_quests,
         }
 
     def load_from_dict(self, data):
         self.stats = data.get('stats', self.stats)
+        self.health = data.get('health', self.stats['VIT'])
         self.inventory = data.get('inventory', self.inventory)
         self.game_time = data.get('game_time', self.game_time)
         self.day = data.get('day', self.day)
+        self.quests = data.get('quests', self.quests)
+        self.active_quest_indices = data.get('active_quest_indices', self.active_quest_indices)
+        self.completed_quests = data.get('completed_quests', self.completed_quests)
+        # Ensure XP_TO_NEXT is recalculated on load
+        self.stats['XP_TO_NEXT'] = self.calculate_xp_to_next()
 
 # ========================================
 # PLAYENT (the character!)
@@ -214,7 +429,97 @@ class Interactable:
         return self.interact_msg
 
 # ========================================
-# SCENE MANAGER
+# RESOURCE NODES (for gathering)
+# ========================================
+class ResourceNode:
+    def __init__(self, x, y, resource_type, yield_amount=1, respawn_time=60000):
+        self.rect = pygame.Rect(x, y, 32, 32)
+        self.resource_type = resource_type
+        self.yield_amount = yield_amount
+        self.respawn_time = respawn_time  # ms
+        self.depleted = False
+        self.deplete_timer = 0
+        self.visible = True
+
+        # Color based on resource type
+        colors = {
+            'catnip': COLORS['MINT'],
+            'yarn': COLORS['PINK'],
+            'strawberries': COLORS['PEACH'],
+            'wood': COLORS['BROWN'],
+            'ore': (169, 169, 169),  # Dark gray
+            'fish': (100, 150, 255),
+            'water': COLORS['SKY'],
+        }
+        self.color = colors.get(resource_type, COLORS['WHITE'])
+
+    def start_gathering(self):
+        if not self.depleted:
+            self.depleted = True
+            self.deplete_timer = pygame.time.get_ticks()
+            return True
+        return False
+
+    def update(self):
+        if self.depleted:
+            if pygame.time.get_ticks() - self.deplete_timer >= self.respawn_time:
+                self.depleted = False
+
+    def draw(self, surface):
+        if not self.visible:
+            return
+        # Draw as a small plant/rock/etc.
+        if self.depleted:
+            color = (self.color[0]//2, self.color[1]//2, self.color[2]//2)
+        else:
+            color = self.color
+        pygame.draw.circle(surface, color, self.rect.center, 12)
+        pygame.draw.circle(surface, COLORS['WHITE'], self.rect.center, 12, 2)
+        # Label (small)
+        font = pygame.font.Font(None, 14)
+        label = font.render(self.resource_type[:3].upper(), True, COLORS['WHITE'])
+        surface.blit(label, (self.rect.x+4, self.rect.y-10))
+
+# ========================================
+# CRAFTING SYSTEM
+# ========================================
+CRAFTING_RECIPES = [
+    {
+        'name': 'Catnip Tea',
+        'output': 'catnip_tea',
+        'count': 1,
+        'ingredients': {'catnip': 2, 'water': 1},
+        'description': 'Restores 20 VIT energy.',
+        'effect': {'heal': 20},
+    },
+    {
+        'name': 'Yarn Ball',
+        'output': 'yarn_ball',
+        'count': 1,
+        'ingredients': {'yarn': 3},
+        'description': '+2 CHA temporary for 5 minutes.',
+        'effect': {'buff': ('CHA', 2, 300_000)},  # 5 min in ms
+    },
+    {
+        'name': 'Fishing Rod',
+        'output': 'fishing_rod',
+        'count': 1,
+        'ingredients': {'wood': 2, 'string': 1},
+        'description': 'Unlocks fishing minigame.',
+        'effect': {'unlock': 'fishing'},
+    },
+    {
+        'name': 'Amulet',
+        'output': 'amulet',
+        'count': 1,
+        'ingredients': {'ore': 1, 'yarn': 1, 'strawberries': 1},
+        'description': '+1 INT permanently.',
+        'effect': {'permanent_stat': ('INT', 1)},
+    },
+]
+
+# ========================================
+# SCENE MANAGER (extended)
 # ========================================
 class Scene:
     def __init__(self, name, bg_color, objects=None):
@@ -223,15 +528,21 @@ class Scene:
         self.objects = objects or []
         self.npcs = []
         self.walls = []
+        self.resource_nodes = []  # Phase 2: gathering nodes
 
     def update(self, dt):
-        pass
+        # Update resource nodes (respawn)
+        for node in self.resource_nodes:
+            node.update()
 
     def draw(self, surface, player):
         surface.fill(self.bg_color)
         # Draw objects
         for obj in self.objects:
             obj.draw(surface)
+        # Draw resource nodes
+        for node in self.resource_nodes:
+            node.draw(surface)
         # Draw NPCs
         for npc in self.npcs:
             npc.draw(surface)
@@ -251,6 +562,13 @@ class Scene:
         for obj in self.objects:
             if player_rect.colliderect(obj.rect):
                 nearby.append(obj)
+        return nearby
+
+    def get_nearby_resource_nodes(self, player_rect):
+        nearby = []
+        for node in self.resource_nodes:
+            if player_rect.colliderect(node.rect.inflate(20, 20)):  # Slightly larger hitbox
+                nearby.append(node)
         return nearby
 
 # ========================================
@@ -332,6 +650,13 @@ class MochiHavenGame:
         # Load some data
         self.create_initial_world()
 
+        # Transient state
+        self.pending_messages = []
+        self.last_hat = (0, 0)
+        # Note: gathering state lives in self.state (gathering, gather_progress, gather_target, gather_duration, crafting_menu_open, selected_recipe, stats_overlay_open, quest_log_open)
+        # These are reset on load (fine)
+
+
     def create_scenes(self):
         scenes = {}
         # Home scene (cozy pastel room)
@@ -402,11 +727,9 @@ class MochiHavenGame:
 
     def handle_input(self):
         keys = pygame.key.get_pressed()
-
-        # Movement
         dx, dy = 0, 0
 
-        # Keyboard (for PC testing)
+        # Keyboard movement (PC testing)
         if keys[pygame.K_LEFT]:
             dx = -1
         if keys[pygame.K_RIGHT]:
@@ -416,21 +739,20 @@ class MochiHavenGame:
         if keys[pygame.K_DOWN]:
             dy = 1
 
-        # RG35xx D-Pad (Hat 0) + Analog Sticks
+        # RG35xx D-Pad (Hat) + Analog sticks
+        current_hat = (0, 0)
         if self.joystick:
             try:
-                # D-Pad (Hat)
                 hat = self.joystick.get_hat(0)
-                if hat[0] == -1:   # Left
+                current_hat = hat
+                if hat[0] == -1:
                     dx = -1
-                elif hat[0] == 1:  # Right
+                elif hat[0] == 1:
                     dx = 1
-                if hat[1] == 1:    # Up
+                if hat[1] == 1:
                     dy = -1
-                elif hat[1] == -1: # Down
+                elif hat[1] == -1:
                     dy = 1
-
-                # Left Analog Stick (Axes 0,1)
                 axis_x = self.joystick.get_axis(0)
                 axis_y = self.joystick.get_axis(1)
                 if abs(axis_x) > 0.3:
@@ -438,26 +760,11 @@ class MochiHavenGame:
                 if abs(axis_y) > 0.3:
                     dy = axis_y
             except:
-                pass  # Joystick not fully supported, fall back to keyboard
+                pass
 
-        # Move player
-        self.player.move(dx, dy, self.current_scene.walls)
-
-        # Check for nearby interactables
-        nearby_npcs = self.current_scene.get_nearby_npcs(self.player.rect)
-        nearby_objects = self.current_scene.get_nearby_objects(self.player.rect)
-        
-        if nearby_npcs:
-            self.player.nearby_npc = nearby_npcs[0]
-        else:
-            self.player.nearby_npc = None
-            
-        if nearby_objects:
-            self.player.nearby_object = nearby_objects[0]
-        else:
-            self.player.nearby_object = None
-
+        # ========================================
         # Event handling
+        # ========================================
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 self.running = False
@@ -466,69 +773,248 @@ class MochiHavenGame:
                 if event.key == pygame.K_ESCAPE:
                     self.running = False
                 elif event.key == pygame.K_RETURN:
-                    self.inventory_open = not self.inventory_open
-                elif event.key == pygame.K_SPACE:
-                    # Interact
-                    if self.dialog.visible:
-                        # Advance dialog
-                        if self.dialog.displayed_chars >= len(self.dialog.text):
-                            self.dialog.visible = False
+                    if self.state.crafting_menu_open:
+                        # Craft selected recipe
+                        recipe = CRAFTING_RECIPES[self.state.selected_recipe]
+                        can_craft = all(self.state.inventory.get(ing, 0) >= qty for ing, qty in recipe['ingredients'].items())
+                        if can_craft:
+                            for ing, qty in recipe['ingredients'].items():
+                                self.state.inventory[ing] -= qty
+                            self.state.inventory[recipe['output']] = self.state.inventory.get(recipe['output'], 0) + recipe['count']
+                            effect = recipe.get('effect', {})
+                            if 'heal' in effect:
+                                heal = effect['heal']
+                                self.state.health = min(self.state.stats['VIT'], self.state.health + heal)
+                                self.dialog.show(f"{recipe['name']} crafted! Restored {heal} VIT.")
+                            elif 'buff' in effect:
+                                stat, val, duration = effect['buff']
+                                self.state.stats[stat] += val
+                                expiry = pygame.time.get_ticks() + duration
+                                self.state.active_buffs.append((stat, val, expiry))
+                                self.dialog.show(f"{recipe['name']} crafted! +{val} {stat} for {duration/60000:.0f} min.")
+                            elif 'unlock' in effect:
+                                self.dialog.show(f"{recipe['name']} crafted! {effect['unlock'].title()} unlocked!")
+                            elif 'permanent_stat' in effect:
+                                stat, val = effect['permanent_stat']
+                                self.state.stats[stat] += val
+                                self.dialog.show(f"{recipe['name']} crafted! Permanently +{val} {stat}!")
+                            else:
+                                self.dialog.show(f"Crafted {recipe['name']}!")
+                        else:
+                            self.dialog.show("Not enough materials for that recipe.")
                     else:
-                        # Start interaction - NPC priority, then objects
+                        self.inventory_open = not self.inventory_open
+                elif event.key == pygame.K_x:
+                    if not (self.state.crafting_menu_open or self.state.quest_log_open or self.state.stats_overlay_open):
+                        nearby_nodes = self.current_scene.get_nearby_resource_nodes(self.player.rect)
+                        if nearby_nodes:
+                            node = nearby_nodes[0]
+                            if not self.state.gathering:
+                                if node.start_gathering():
+                                    self.state.gathering = True
+                                    self.state.gather_target = node
+                                    self.state.gather_progress = 0
+                        else:
+                            self.inventory_open = not self.inventory_open
+                elif event.key == pygame.K_y:
+                    if not self.dialog.visible:
+                        self.state.crafting_menu_open = not self.state.crafting_menu_open
+                        if self.state.crafting_menu_open:
+                            self.state.quest_log_open = False
+                            self.state.stats_overlay_open = False
+                            self.inventory_open = False
+                            self.state.selected_recipe = 0
+                elif event.key == pygame.K_UP and self.state.crafting_menu_open:
+                    self.state.selected_recipe = (self.state.selected_recipe - 1) % len(CRAFTING_RECIPES)
+                elif event.key == pygame.K_DOWN and self.state.crafting_menu_open:
+                    self.state.selected_recipe = (self.state.selected_recipe + 1) % len(CRAFTING_RECIPES)
+                elif event.key == pygame.K_SPACE:
+                    if self.dialog.visible:
+                        if self.dialog.displayed_chars >= len(self.dialog.text):
+                            if self.pending_messages:
+                                self.dialog.show(self.pending_messages.pop(0))
+                            else:
+                                self.dialog.visible = False
+                    else:
                         if self.player.nearby_npc:
                             npc = self.player.nearby_npc
                             line = npc.interact()
+                            completed = self.state.update_quest_progress('talk', npc.name, 1)
+                            for idx in completed:
+                                quest = self.state.quests[idx]
+                                rewards = self.state.complete_quest(idx)
+                                msg = f"Quest Complete: {quest['title']}! +{rewards['xp']} XP"
+                                if rewards.get('levels', 0) > 0:
+                                    msg += f" (Now Level {self.state.stats['LEVEL']})"
+                                if rewards.get('item'):
+                                    msg += f" + {rewards['item']}"
+                                self.pending_messages.append(msg)
                             self.dialog.show(line)
                         elif self.player.nearby_object:
                             obj = self.player.nearby_object
                             line = obj.interact()
                             self.dialog.show(line)
-                            # Special: bed saves game!
                             if obj.action == "Sleep":
                                 self.save_game()
                                 self.dialog.show("Game saved! Sweet dreams... 💤")
 
             elif event.type == pygame.JOYBUTTONDOWN:
-                # RG35xx button mapping!
-                if event.button == BUTTON_A:  # Interact
+                if event.button == BUTTON_A:
                     if self.dialog.visible:
                         if self.dialog.displayed_chars >= len(self.dialog.text):
-                            self.dialog.visible = False
+                            if self.pending_messages:
+                                self.dialog.show(self.pending_messages.pop(0))
+                            else:
+                                self.dialog.visible = False
+                    elif self.state.crafting_menu_open:
+                        # Craft selected recipe
+                        recipe = CRAFTING_RECIPES[self.state.selected_recipe]
+                        can_craft = all(self.state.inventory.get(ing, 0) >= qty for ing, qty in recipe['ingredients'].items())
+                        if can_craft:
+                            for ing, qty in recipe['ingredients'].items():
+                                self.state.inventory[ing] -= qty
+                            self.state.inventory[recipe['output']] = self.state.inventory.get(recipe['output'], 0) + recipe['count']
+                            effect = recipe.get('effect', {})
+                            if 'heal' in effect:
+                                heal = effect['heal']
+                                self.state.health = min(self.state.stats['VIT'], self.state.health + heal)
+                                self.dialog.show(f"{recipe['name']} crafted! Restored {heal} VIT.")
+                            elif 'buff' in effect:
+                                stat, val, duration = effect['buff']
+                                self.state.stats[stat] += val
+                                expiry = pygame.time.get_ticks() + duration
+                                self.state.active_buffs.append((stat, val, expiry))
+                                self.dialog.show(f"{recipe['name']} crafted! +{val} {stat} for {duration/60000:.0f} min.")
+                            elif 'unlock' in effect:
+                                self.dialog.show(f"{recipe['name']} crafted! {effect['unlock'].title()} unlocked!")
+                            elif 'permanent_stat' in effect:
+                                stat, val = effect['permanent_stat']
+                                self.state.stats[stat] += val
+                                self.dialog.show(f"{recipe['name']} crafted! Permanently +{val} {stat}!")
+                            else:
+                                self.dialog.show(f"Crafted {recipe['name']}!")
+                        else:
+                            self.dialog.show("Not enough materials for that recipe.")
                     else:
-                        # Start interaction - NPC priority, then objects
+                        # Normal interaction with NPC/object
                         if self.player.nearby_npc:
                             npc = self.player.nearby_npc
                             line = npc.interact()
+                            completed = self.state.update_quest_progress('talk', npc.name, 1)
+                            for idx in completed:
+                                quest = self.state.quests[idx]
+                                rewards = self.state.complete_quest(idx)
+                                msg = f"Quest Complete: {quest['title']}! +{rewards['xp']} XP"
+                                if rewards.get('levels', 0) > 0:
+                                    msg += f" (Now Level {self.state.stats['LEVEL']})"
+                                if rewards.get('item'):
+                                    msg += f" + {rewards['item']}"
+                                self.pending_messages.append(msg)
                             self.dialog.show(line)
                         elif self.player.nearby_object:
                             obj = self.player.nearby_object
                             line = obj.interact()
                             self.dialog.show(line)
-                            # Special: bed saves game!
                             if obj.action == "Sleep":
                                 self.save_game()
                                 self.dialog.show("Game saved! Sweet dreams... 💤")
 
-                elif event.button == BUTTON_B:  # Cancel/Back
+                elif event.button == BUTTON_B:
                     if self.dialog.visible:
                         self.dialog.visible = False
                     elif self.inventory_open:
                         self.inventory_open = False
+                    elif self.state.crafting_menu_open:
+                        self.state.crafting_menu_open = False
+                    elif self.state.quest_log_open:
+                        self.state.quest_log_open = False
+                    elif self.state.stats_overlay_open:
+                        self.state.stats_overlay_open = False
 
-                elif event.button == BUTTON_X:  # Inventory
-                    self.inventory_open = not self.inventory_open
+                elif event.button == BUTTON_X:
+                    if self.dialog.visible:
+                        pass
+                    else:
+                        if self.state.crafting_menu_open or self.state.quest_log_open or self.state.stats_overlay_open:
+                            pass
+                        else:
+                            nearby_nodes = self.current_scene.get_nearby_resource_nodes(self.player.rect)
+                            if nearby_nodes:
+                                node = nearby_nodes[0]
+                                if not self.state.gathering:
+                                    if node.start_gathering():
+                                        self.state.gathering = True
+                                        self.state.gather_target = node
+                                        self.state.gather_progress = 0
+                            else:
+                                self.inventory_open = not self.inventory_open
 
-                elif event.button == BUTTON_Y:  # Stats
-                    # Show stats screen (TODO)
-                    pass
+                elif event.button == BUTTON_Y:
+                    if not self.dialog.visible:
+                        self.state.crafting_menu_open = not self.state.crafting_menu_open
+                        if self.state.crafting_menu_open:
+                            self.state.quest_log_open = False
+                            self.state.stats_overlay_open = False
+                            self.inventory_open = False
+                            self.state.selected_recipe = 0
 
-                elif event.button == BUTTON_START:  # Pause/Save
+                elif event.button == BUTTON_L1:
+                    if not self.dialog.visible:
+                        self.state.quest_log_open = not self.state.quest_log_open
+                        if self.state.quest_log_open:
+                            self.state.crafting_menu_open = False
+                            self.state.stats_overlay_open = False
+                            self.inventory_open = False
+
+                elif event.button == BUTTON_SELECT:
+                    if not self.dialog.visible:
+                        self.state.stats_overlay_open = not self.state.stats_overlay_open
+                        if self.state.stats_overlay_open:
+                            self.state.crafting_menu_open = False
+                            self.state.quest_log_open = False
+                            self.inventory_open = False
+
+                elif event.button == BUTTON_START:
                     self.save_game()
                     self.dialog.show("Game saved! 🐱")
 
-                elif event.button == BUTTON_SELECT:  # Debug
-                    print(f"Position: {self.player.rect}")
-                    print(f"Time: {self.state.game_time//60:02d}:{self.state.game_time%60:02d}")
+        # ========================================
+        # Menu navigation (crafting via hat)
+        # ========================================
+        if self.state.crafting_menu_open:
+            if current_hat[1] == 1 and self.last_hat[1] != 1:
+                self.state.selected_recipe = (self.state.selected_recipe - 1) % len(CRAFTING_RECIPES)
+            if current_hat[1] == -1 and self.last_hat[1] != -1:
+                self.state.selected_recipe = (self.state.selected_recipe + 1) % len(CRAFTING_RECIPES)
+            self.last_hat = current_hat
+            return
+
+        # Skip normal gameplay if any overlay open (inventory, quest, stats)
+        if self.inventory_open or self.state.quest_log_open or self.state.stats_overlay_open:
+            self.last_hat = current_hat
+            return
+
+        # ========================================
+        # Normal gameplay: move player
+        # ========================================
+        self.player.move(dx, dy, self.current_scene.walls)
+
+        # Update nearby interactables
+        nearby_npcs = self.current_scene.get_nearby_npcs(self.player.rect)
+        nearby_objects = self.current_scene.get_nearby_objects(self.player.rect)
+        nearby_nodes = self.current_scene.get_nearby_resource_nodes(self.player.rect)
+
+        if nearby_npcs:
+            self.player.nearby_npc = nearby_npcs[0]
+        else:
+            self.player.nearby_npc = None
+        if nearby_objects:
+            self.player.nearby_object = nearby_objects[0]
+        else:
+            self.player.nearby_object = None
+
+        self.last_hat = current_hat
+
 
     def update(self, dt):
         if not self.dialog.visible and not self.inventory_open:
