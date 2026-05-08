@@ -346,11 +346,11 @@ class Player:
             new_x = self.rect.x + dx * self.speed
             new_y = self.rect.y + dy * self.speed
 
-            # Simple boundary check (640x480)
-            if 0 <= new_x <= SCREEN_WIDTH - self.rect.width:
-                self.rect.x = new_x
-            if 0 <= new_y <= SCREEN_HEIGHT - self.rect.height:
-                self.rect.y = new_y
+            # Clamp to screen bounds (instead of rejecting moves that exceed)
+            new_x = max(0, min(new_x, SCREEN_WIDTH - self.rect.width))
+            new_y = max(0, min(new_y, SCREEN_HEIGHT - self.rect.height))
+            self.rect.x = new_x
+            self.rect.y = new_y
 
             # Set direction
             if dx > 0: self.direction = 'right'
@@ -1090,6 +1090,12 @@ class MochiHavenGame:
         # Draw UI overlays
         if self.inventory_open:
             self.draw_inventory()
+        if self.state.crafting_menu_open:
+            self.draw_crafting_menu()
+        if self.state.quest_log_open:
+            self.draw_quest_log()
+        if self.state.stats_overlay_open:
+            self.draw_stats_overlay()
 
         self.dialog.draw(self.screen)
 
