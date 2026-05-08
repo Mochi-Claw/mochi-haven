@@ -726,8 +726,15 @@ class MochiHavenGame:
         print(f"💾 Game saved to {save_path}")
 
     def handle_input(self):
+        # DEBUG: Flag to track if we've printed debug yet
         keys = pygame.key.get_pressed()
         dx, dy = 0, 0
+
+        # DEBUG: Print when right arrow pressed
+        if keys[pygame.K_RIGHT]:
+            print("[DEBUG] Right arrow is pressed, dx=1")
+        if keys[pygame.K_y]:
+            print("[DEBUG] Y key is pressed, should toggle crafting")
 
         # Keyboard movement (PC testing)
         if keys[pygame.K_LEFT]:
@@ -770,6 +777,7 @@ class MochiHavenGame:
                 self.running = False
 
             elif event.type == pygame.KEYDOWN:
+                print(f"[DEBUG] KEYDOWN: {pygame.key.name(event.key)}")
                 if event.key == pygame.K_ESCAPE:
                     self.running = False
                 elif event.key == pygame.K_RETURN:
