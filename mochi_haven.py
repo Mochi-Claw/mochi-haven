@@ -513,7 +513,19 @@ class MochiHavenGame:
 
     def run(self):
         print("🎮 Starting Joy Time")
-        print("           .--''--.\n      _'         '_\n     '   _     _   '\n     |  (o)   (o)  |\n      \   _     _  /\n       '  (__) (__) '\n       \n       Mochi\n       .-\"\"\"-\"\"\"-.\n      (_|       |_)\n        \"       \"\n      -=×=-\n    🏡 Mochi Haven 🏡\n")
+        print("           .--''--.")
+        print("      _'         '_")
+        print("     '   _     _   '")
+        print("     |  (o)   (o)  |")
+        print("      \\   _     _  /")
+        print("       '  (__) (__) '")
+        print()
+        print("       Mochi")
+        print("       .-\"\"\"-\"\"\"-.")
+        print("      (_|       |_)")
+        print("        \"       \"")
+        print("      -=×=-")
+        print("    🏡 Mochi Haven 🏡")
 
         while self.running:
             dt = self.clock.tick(FPS)
